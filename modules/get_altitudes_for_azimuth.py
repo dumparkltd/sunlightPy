@@ -2,7 +2,7 @@
 import get_min_altitude_for_azimuth
 
 # dem[y][x]
-def get_altitudes_for_azimuth(dem, azimuth, to_crs, from_crs):
+def get_altitudes_for_azimuth(dem, azimuth, d_alt, to_crs, from_crs):
     # remember max value    
     elev_max_dem = dem.read(1).max()
     
@@ -16,6 +16,7 @@ def get_altitudes_for_azimuth(dem, azimuth, to_crs, from_crs):
                 column,
                 row,
                 azimuth,
+                d_alt,
                 dem,
                 elev_max_dem,
                 to_crs,

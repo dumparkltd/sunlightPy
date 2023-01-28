@@ -1,24 +1,34 @@
+
 import rasterio
 from rasterio.enums import Resampling
 from pyproj import CRS, Transformer
-import numpy as np
 from datetime import datetime
-import time
+from suncalc import get_position, get_times
+import math
 
-import get_altitudes_for_azimuth 
+import get_altitudes_for_all_azimuths
   
 ### VARIABLES
-
-azimuth = 90
-downscale_factor_dem = 10
-downscale_factor_alt = 10
-
 fileLocation = "c:/users/timo/documents/projects/inrae/data"
 fileLocationTmp = fileLocation + '/tmp'
 
+settings =  type(
+    'obj', 
+    (object,),
+    {
+        'azimuth_min': 246, # adjusted to local range below
+        'azimuth_max': 246, # adjusted to local range below
+        'azimuth_step': 10,
+        'downscale_factor_dem': 25, # downsample dem resolution
+        'downscale_factor_alt': 1, # distances between points for sampling elevation
+        'fileLocation': fileLocation,
+        'fileLocationTmp': fileLocationTmp
+    }
+) 
+
 now = datetime.now()
 current_time = now.strftime("%H:%M:%S")
-print("Start..." + "downscale_factor: " + str(downscale_factor_dem), current_time)
+print("Start..." + "downscale_factor: " + str(settings.downscale_factor_dem), current_time)
 
 ### READ ORIGINAL RASTER #####################################################
 
@@ -34,8 +44,8 @@ dem = rasterio.open(
 dem_small = dem.read(
     out_shape=(
         dem.count,
-        int(dem.height / downscale_factor_dem),
-        int(dem.width / downscale_factor_dem)
+        int(dem.height / settings.downscale_factor_dem),
+        int(dem.width / settings.downscale_factor_dem)
     ),
     resampling=Resampling.bilinear
 )
@@ -62,9 +72,7 @@ dem_small_args.update(
 dem.close()
 
 dem_small_file = fileLocationTmp \
-+ "/tmp_" + str(azimuth) \
-+ "_ds-" + str(downscale_factor_dem) \
-+ "_da-" + str(downscale_factor_alt) \
++ "/tmp_ds-" + str(settings.downscale_factor_dem) \
 + ".tif"
 
 print(dem_small_file)
@@ -91,43 +99,43 @@ target_crs = CRS.from_string('epsg:4326')
 transform_to_target_crs = Transformer.from_crs(in_crs, target_crs)
 transform_from_target_crs = Transformer.from_crs(target_crs, in_crs)
 
-### CALCULATE ALTITUDES FOR AZIMUTH ########################################
 
-altitudes = get_altitudes_for_azimuth.get_altitudes_for_azimuth(
-    dst,
-    azimuth,
-    transform_to_target_crs,
-    transform_from_target_crs,
-    downscale_factor_alt
+### GET SUN RISE SUN SET TIMES ###########################################################
+
+x, y = dst.xy(0, 0)
+lat, lon = transform_to_target_crs.transform(x, y)
+# WARNING N Hemisphere only
+date_longest_N = datetime(2023, 6, 21, 12, 0)
+suntimes = get_times(date_longest_N, lon, lat)
+
+slp_sunrise = get_position(
+  suntimes['sunrise'],
+  lon,
+  lat
+)
+slp_sunset = get_position(
+  suntimes['sunset'],
+  lon,
+  lat
 )
 
-# print(altitudes)
-# print(dst.read())
+settings.azimuth_min = math.floor(math.degrees(slp_sunrise['azimuth'])+180)
+settings.azimuth_max = math.ceil(math.degrees(slp_sunset['azimuth'])+180)
+
+print ('azimuth range: ', str(settings.azimuth_min), str(settings.azimuth_max))
+
+### CALCULATE ALTITUDES FOR AZIMUTH ########################################
+
+get_altitudes_for_all_azimuths.get_altitudes_for_all_azimuths(
+    dst,
+    settings,
+    transform_to_target_crs,
+    transform_from_target_crs
+)
 
 now = datetime.now()
 current_time = now.strftime("%H:%M:%S")
 print("Altitudes complete...", current_time)
 
-### WRITE ALTITUDES AS RASTER
-
-alt_file = fileLocationTmp \
-    + "/altitudes_azi-" + str(azimuth) \
-    + "_ds-" + str(downscale_factor_dem) \
-    + "_da-" + str(downscale_factor_alt) \
-    + "_" + str(int(time.time())) + ".tif"
-    
-profile = dst.profile.copy()
-alts = rasterio.open(
-    alt_file,
-    'w',
-    **profile
-)  
-alts.write(
-  np.array(altitudes).astype(rasterio.float32),
-  1
-)
-print("Altitudes written..." + alt_file, current_time)
-
-alts.close()
 dst.close()
 # print(altitudes)
