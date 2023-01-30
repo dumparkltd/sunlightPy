@@ -4,17 +4,28 @@ from nautical_calculations.operations import get_point
 # import matplotlib.pyplot as plt
 
 # -*- coding: utf-8 -*-
-def get_min_altitude_for_azimuth(column, row, azimuth, d_alt, dem, elev_max_dem, to_crs, from_crs):
+def get_min_altitude_for_azimuth(
+        dem_data,
+        column,
+        row,
+        azimuth,
+        d_alt,
+        elev_max_dem,
+        to_crs,
+        from_crs,
+        get_xy,
+        get_index
+    ):
 
-    dem_data = dem.read(1)
     # dem[y][x]
     elevation_origin = dem_data[row, column]
     altitude_min = 0
-    
+    height = len(dem_data)
+    width = len(dem_data[0])
     # TODO check for NaN
     if (elevation_origin != 0):
-        # figure out transect start in lat/lon
-        x, y = dem.xy(row, column)
+        # figure out transect start in lat/longet_index
+        x, y = get_xy(row, column) # dem.xy(row, column)
         lat, lon = to_crs.transform(x, y)
         # calculate maximum possible difference in elevation
         d_vert_max = elev_max_dem - elevation_origin
@@ -24,8 +35,8 @@ def get_min_altitude_for_azimuth(column, row, azimuth, d_alt, dem, elev_max_dem,
             d_horiz_i = d_alt * i
             lat_i, lon_i = get_point(lat, lon, azimuth, d_horiz_i / 1000) # to km!
             x_i, y_i = from_crs.transform(lat_i, lon_i)
-            row_i, column_i = dem.index(x_i, y_i)
-            if (row_i >= 0 and row_i < dem.height and column_i >= 0 and column_i < dem.width):
+            row_i, column_i = get_index(x_i, y_i) # dem.index(x_i, y_i)
+            if (row_i >= 0 and row_i < height and column_i >= 0 and column_i < width):
                 elev_i = dem_data[row_i, column_i]
                 d_vert_i = elev_i - elevation_origin
                 if (d_vert_i > 0 and d_horiz_i != 0):
