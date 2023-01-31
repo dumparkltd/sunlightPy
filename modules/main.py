@@ -26,7 +26,7 @@ def task(worker):
         mode = 'r',
         driver='GTiff'
     )
-    in_crs = CRS.from_proj4(dst.crs.to_proj4())
+    in_crs = CRS.from_string(dst.crs.to_string().lower())
     target_crs = CRS.from_string('epsg:4326')
     transform_to_target_crs = Transformer.from_crs(in_crs, target_crs)
     transform_from_target_crs = Transformer.from_crs(target_crs, in_crs)
@@ -58,7 +58,7 @@ def main():
     settings =  {
         'azimuth_min': 246, # adjusted to local range below
         'azimuth_max': 246, # adjusted to local range below
-        'azimuth_step': 10,
+        'azimuth_step': 1,
         'downscale_factor_dem': 10, # downsample dem resolution
         'downscale_factor_alt': 1, # distances between points for sampling elevation
         'file_location': file_location,
@@ -66,12 +66,12 @@ def main():
         'threading_enabled': True
     } 
     
-    # now = datetime.now()
-    # current_time = now.strftime("%H:%M:%S")
-    # print("Start..." + "downscale_factor: " + str(settings['downscale_factor_dem']), current_time)
+    now = datetime.now()
+    current_time = now.strftime("%H:%M:%S")
+    print("Start..." + "downscale_factor: " + str(settings['downscale_factor_dem']), current_time)
     
     # ### READ ORIGINAL RASTER #####################################################
-    
+    # TODO use with statement to open to ensure raster files are closed in case of exceptions
     dem = rasterio.open(
         dem_location,
         mode = 'r',
@@ -111,9 +111,6 @@ def main():
     
     # dem.close()
     
-    dem_small_file = file_location_out \
-    + "/tmp_ds-" + str(settings['downscale_factor_dem']) \
-    + ".tif"
     
     # dst = rasterio.open(dem_small_file, "w", **dem_small_args)
     # # iterate through bands
@@ -133,7 +130,7 @@ def main():
     
     ### RE-PROJECTION ###########################################################
     
-    in_crs = CRS.from_proj4(dem.crs.to_proj4())
+    in_crs = CRS.from_string(dem.crs.to_string().lower())
     target_crs = CRS.from_string('epsg:4326')
     transform_to_target_crs = Transformer.from_crs(in_crs, target_crs)
     # transform_from_target_crs = Transformer.from_crs(target_crs, in_crs)
@@ -168,6 +165,9 @@ def main():
     # get_xy = dst.xy
     # get_index = dst.index
     r = range(settings['azimuth_min'], settings['azimuth_max'] + settings['azimuth_step'], settings['azimuth_step'])
+    dem_small_file = file_location_out \
+    + "/tmp_ds-" + str(settings['downscale_factor_dem']) \
+    + ".tif"
     workers = []
     for azimuth in r:
         workers.append({
@@ -182,18 +182,21 @@ def main():
         with ProcessPoolExecutor(
             max_workers = cpu_count() - 2
         ) as executor:
+            ### RUN IN PARALLEL
             futures = [executor.submit(task, worker) for worker in workers]
+            ### PROCESS RESULTS
             for future in as_completed(futures):
             	# get the result for the next completed task
                 result = future.result() # blocks
-                now = datetime.now()
-                current_time = now.strftime("%H:%M:%S")
-                # print("Altitudes complete...", current_time)
-                ### WRITE ALTITUDES AS individual raster files
-                # print('results', results)
-                now = datetime.now()
-                current_time = now.strftime("%H:%M:%S")
-                print("Writing altitudes as raster images..." , current_time)
+                azimuth, altitudes = result
+                # now = datetime.now()
+                # current_time = now.strftime("%H:%M:%S")
+                # # print("Altitudes complete...", current_time)
+                # ### WRITE ALTITUDES AS individual raster files
+                # # print('results', results)
+                # now = datetime.now()
+                # current_time = now.strftime("%H:%M:%S")
+                # print("Writing altitudes as raster images..." , current_time)
                 dst = rasterio.open(
                     dem_small_file,
                     mode = 'r',
@@ -201,7 +204,6 @@ def main():
                 )
                 dst_profile = dst.profile.copy()
                 dst.close()
-                azimuth, altitudes = result
                 alt_file = settings['file_location_out'] \
                     + "/altitudes_azi-" + str(azimuth) \
                     + "_ds-" + str(settings['downscale_factor_dem']) \
@@ -219,6 +221,8 @@ def main():
                 )
                 # print("Altitudes written..." + alt_file, current_time)
                 alts.close()
+                
+            executor.shutdown() # blocks
     # get_altitudes_for_all_azimuths.get_altitudes_for_all_azimuths(
     #     dst.read(1),
     #     dst.profile.copy(),

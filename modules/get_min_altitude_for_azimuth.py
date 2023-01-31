@@ -16,7 +16,7 @@ def get_min_altitude_for_azimuth(
         get_xy,
         get_index
     ):
-
+    # TODO introduce nodata value, e.g. -1
     # dem[y][x]
     elevation_origin = dem_data[row, column]
     altitude_min = 0
